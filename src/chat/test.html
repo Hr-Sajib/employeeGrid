@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --text: #1b1f24; --muted: #6b7280; --border: #e3e6ea;
+    --user: #2563eb; --user-text: #fff; --bot: #eef0f3; --err: #dc2626; --ok: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1216; --panel: #171b21; --text: #e6e8eb; --muted: #8b93a0; --border: #262c35;
+            --user: #3b82f6; --user-text: #fff; --bot: #232932; --err: #f87171; --ok: #4ade80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100dvh; display: flex; justify-content: center; background: var(--bg);
+         color: var(--text); font: 15px/1.5 system-ui, -apple-system, sans-serif; }
+  .app { width: 100%; max-width: 760px; display: flex; flex-direction: column; background: var(--panel);
+         border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+           padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 16px; margin: 0; }
+  .status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--err); }
+  .dot.on { background: var(--ok); }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: transparent;
+           color: var(--text); border-radius: 8px; padding: 6px 12px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .empty { margin: auto; color: var(--muted); }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user); color: var(--user-text); border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--bot); border-bottom-left-radius: 4px; }
+  .msg.error { align-self: center; color: var(--err); background: transparent; border: 1px solid var(--err); font-size: 13px; }
+  .msg.pending { color: var(--muted); font-style: italic; }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  textarea { flex: 1; resize: none; max-height: 140px; padding: 10px 12px; font: inherit; color: var(--text);
+             background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+  textarea:focus { outline: 2px solid var(--user); outline-offset: -1px; }
+  form button { background: var(--user); color: var(--user-text); border: none; padding: 0 18px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Chat</h1>
+    <div class="status"><span class="dot" id="dot"></span><span id="status">connecting</span></div>
+    <button id="new" type="button">New chat</button>
+  </header>
+  <div id="messages"><div class="empty" id="empty">Say something to start the conversation.</div></div>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="Type a message (Shift+Enter for newline)" autofocus></textarea>
+    <button id="send" type="submit" disabled>Send</button>
+  </form>
+</div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const messages = $("messages"), input = $("input"), send = $("send");
+  const socket = io({ path: "/ws/socket.io" });
+  let conversationId = null, current = null, busy = false;
+
+  function setStatus(on, text) { $("dot").classList.toggle("on", on); $("status").textContent = text; refresh(); }
+  function refresh() { send.disabled = busy || !socket.connected; }
+  function add(cls, text) {
+    $("empty")?.remove();
+    const el = document.createElement("div");
+    el.className = "msg " + cls;
+    el.textContent = text;
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+    return el;
+  }
+  function finish() { current = null; busy = false; refresh(); input.focus(); }
+
+  socket.on("connect", () => setStatus(true, "connected"));
+  socket.on("disconnect", () => { setStatus(false, "disconnected"); current?.remove(); finish(); });
+  socket.on("reply", (d) => {
+    conversationId = d.conversation_id;
+    current.textContent = d.reply;
+    current.classList.remove("pending");
+    finish();
+  });
+  socket.on("error", (d) => { current?.remove(); add("error", d.detail); finish(); });
+
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || busy) return;
+    add("user", text);
+    current = add("bot pending", "Thinking…");
+    socket.emit("chat", { conversation_id: conversationId, message: text });
+    input.value = ""; input.style.height = "auto";
+    busy = true; refresh();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
+  });
+  input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = input.scrollHeight + "px"; });
+  $("new").addEventListener("click", () => {
+    conversationId = null;
+    messages.innerHTML = '<div class="empty" id="empty">Say something to start the conversation.</div>';
+    finish();
+  });
+</script>
+</body>
+</html>
