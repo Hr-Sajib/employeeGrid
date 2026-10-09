@@ -1,43 +1,58 @@
-from langchain_core.messages import SystemMessage
-from langchain_openai import ChatOpenAI
-from langgraph.graph import END, START, MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode
-from src.agent.tools import ENABLED_TOOLS
-from src.utils.settings import settings
-
-SYSTEM_PROMPT = (
-    "You are an HR assistant. Use the available tools whenever the user asks about "
-    "employee data; never guess employee data. Ask the user to confirm before deleting an employee. "
-    "For anything else, answer directly."
-)
-
-llm = ChatOpenAI(
-    model=settings.OPENROUTER_MODEL,
-    base_url="https://openrouter.ai/api/v1",
-    api_key=settings.OPENROUTER_API_KEY,
-    timeout=60,
-    extra_body={"provider": {"sort": "latency"}, "reasoning": {"effort": "low"}},
-).bind_tools(ENABLED_TOOLS)
+import logging
+from langgraph.graph import END, START, StateGraph
+from src.agent.nodes import calculator, documents, employee_data, router, synthesizer, verifier
+from src.agent.state import AgentState
+from src.utils.trace import LLMLogger, begin_run, end_run, info
 
 
-async def agent_node(state: MessagesState):
-    return {"messages": [await llm.ainvoke([SystemMessage(SYSTEM_PROMPT)] + state["messages"])]}
+def pick_branches(state: AgentState) -> list[str]:
+    plan = state["plan"]
+    branches = []
+    if plan["needs_employee_data"]:
+        branches.append("employee_data")
+    if plan["needs_documents"]:
+        branches.append("documents")
+    branches = branches or ["synthesizer"]
+    info("route after router -> %s", branches)
+    return branches
 
 
-def needs_tool(state: MessagesState) -> str:
-    return "tools" if state["messages"][-1].tool_calls else END
+def after_synthesizer(state: AgentState) -> str:
+    next_node = "calculator" if state["messages"][-1].tool_calls else "verifier"
+    info("route after synthesizer -> %s", next_node)
+    return next_node
 
 
-builder = StateGraph(MessagesState)
-builder.add_node("agent", agent_node)
-builder.add_node("tools", ToolNode(ENABLED_TOOLS))
-builder.add_edge(START, "agent")
-builder.add_conditional_edges("agent", needs_tool, ["tools", END])
-builder.add_edge("tools", "agent")
+def after_verifier(state: AgentState) -> str:
+    next_node = "synthesizer" if state["verdict"] == "retry" else END
+    info("route after verifier -> %s (verdict=%s)", next_node, state["verdict"])
+    return next_node
+
+
+builder = StateGraph(AgentState)
+builder.add_node("router", router)
+builder.add_node("employee_data", employee_data)
+builder.add_node("documents", documents)
+builder.add_node("synthesizer", synthesizer)
+builder.add_node("calculator", calculator)
+builder.add_node("verifier", verifier)
+
+builder.add_edge(START, "router")
+builder.add_conditional_edges("router", pick_branches, ["employee_data", "documents", "synthesizer"])
+builder.add_edge("employee_data", "synthesizer")
+builder.add_edge("documents", "synthesizer")
+builder.add_conditional_edges("synthesizer", after_synthesizer, ["calculator", "verifier"])
+builder.add_edge("calculator", "synthesizer")
+builder.add_conditional_edges("verifier", after_verifier, ["synthesizer", END])
 graph = builder.compile()
 
 
-async def run_agent(messages: list[dict]) -> str:
-    result = await graph.ainvoke({"messages": messages})
-    return result["messages"][-1].content
-
+async def run_agent(history: list[dict], conversation_id=None) -> str:
+    begin_run(conversation_id, history)
+    try:
+        result = await graph.ainvoke({"history": history}, config={"callbacks": [LLMLogger()]})
+    except Exception:
+        logging.getLogger("agent").exception("RUN FAILED")
+        raise
+    end_run(result)
+    return result["answer"]

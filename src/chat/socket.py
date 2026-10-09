@@ -1,9 +1,12 @@
+import logging
 import socketio
 from fastapi import HTTPException
 from pydantic import ValidationError
 from src.chat.controller import ChatController
 from src.chat.dtos import ChatRequest
 from src.utils.db import Session
+
+logger = logging.getLogger(__name__)
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 socket_app = socketio.ASGIApp(sio, socketio_path="ws/socket.io")
@@ -20,3 +23,6 @@ async def chat(sid, data):
         await sio.emit("error", {"detail": str(e)}, to=sid)
     except HTTPException as e:
         await sio.emit("error", {"detail": e.detail}, to=sid)
+    except Exception:
+        logger.exception("chat event failed")
+        await sio.emit("error", {"detail": "Something went wrong. Please try again."}, to=sid)

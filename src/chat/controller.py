@@ -38,6 +38,6 @@ class ChatController:
     @staticmethod
     async def chat(db: Session, req: ChatRequest) -> ChatResponse:
         conversation_id, messages = await asyncio.to_thread(ChatController.prepare, db, req)
-        reply = await run_agent(messages)
+        reply = await run_agent(messages, conversation_id)
         await asyncio.to_thread(ChatController.save_reply, db, conversation_id, reply)
         return ChatResponse(conversation_id=conversation_id, reply=reply)
