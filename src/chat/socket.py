@@ -2,7 +2,6 @@ import logging
 import socketio
 from fastapi import HTTPException
 from pydantic import ValidationError
-from src.auth.security import decode_token
 from src.chat.controller import ChatController
 from src.chat.dtos import ChatRequest
 from src.utils.db import Session
@@ -15,21 +14,11 @@ socket_app = socketio.ASGIApp(sio, socketio_path="ws/socket.io")
 
 
 @sio.event
-async def connect(sid, environ, auth):
-    try:
-        user = decode_token((auth or {}).get("token", ""))
-    except HTTPException:
-        raise socketio.exceptions.ConnectionRefusedError("unauthorized")
-    await sio.save_session(sid, {"user": user})
-
-
-@sio.event
 async def chat(sid, data):
     try:
-        user = (await sio.get_session(sid))["user"]
         req = ChatRequest(**data)
         with Session() as db:
-            res = await ChatController.chat(db, req, user, lambda step: sio.emit("step", step, to=sid))
+            res = await ChatController.chat(db, req, lambda step: sio.emit("step", step, to=sid))
         await sio.emit("reply", {"conversation_id": str(res.conversation_id), "reply": res.reply}, to=sid)
     except ValidationError as e:
         await sio.emit("error", {"detail": str(e)}, to=sid)

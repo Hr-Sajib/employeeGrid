@@ -126,21 +126,6 @@
   #toast.show { opacity: 1; }
   #toast.error { background: var(--bad); color: #fff; }
 
-  /* login, signed-in user, usage */
-  body.logged-out header nav, body.logged-out .who, body.logged-out .status, body.logged-out main { display: none; }
-  body:not(.is-admin) .admin-only { display: none !important; }
-  .login { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .login-card { width: min(380px, 100%); padding: 24px; display: grid; gap: 14px; }
-  .login-card h2 { font-size: 20px; }
-  .who { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-  .badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
-  .badge.admin { color: var(--accent); border-color: var(--accent); }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-  .tile { padding: 14px 16px; }
-  .tile .big { font-size: 22px; font-weight: 600; }
-  td.wrap { white-space: normal; min-width: 220px; }
-  td.bad { color: var(--bad); }
-
   @media (max-width: 640px) { main { padding: 12px; } .top { padding: 10px 12px; } .two { grid-template-columns: 1fr; } .msg { max-width: 92%; } }
 </style>
 </head>
@@ -152,21 +137,9 @@
     <button role="tab" data-tab="chat">Chat</button>
     <button role="tab" data-tab="employees">Employees</button>
     <button role="tab" data-tab="documents">Documents</button>
-    <button role="tab" data-tab="usage" class="admin-only">Usage</button>
   </nav>
   <div class="status"><span class="dot" id="dot"></span><span id="status">connecting</span></div>
-  <div class="who"><span id="whoName"></span><span class="badge" id="whoRole"></span><button class="btn small" id="logout" type="button">Log out</button></div>
 </header>
-
-<div class="login" id="loginScreen" hidden>
-  <form class="card login-card" id="loginForm">
-    <h2>Sign in</h2>
-    <label>Email <input type="text" id="loginEmail" autocomplete="username" required></label>
-    <label>Password <input type="password" id="loginPassword" autocomplete="current-password" required></label>
-    <div class="form-error" id="loginError"></div>
-    <button class="btn primary" id="loginBtn" type="submit">Sign in</button>
-  </form>
-</div>
 
 <main>
   <!-- CHAT -->
@@ -186,7 +159,7 @@
     <div class="row">
       <h2 class="grow">Employees <span class="muted" id="empCount"></span></h2>
       <input type="search" id="empSearch" placeholder="Search by name" style="width:220px">
-      <button class="btn primary admin-only" id="addEmp">Add employee</button>
+      <button class="btn primary" id="addEmp">Add employee</button>
     </div>
     <div class="card table-wrap">
       <table>
@@ -199,7 +172,7 @@
   <!-- DOCUMENTS -->
   <section id="tab-documents" class="tab" hidden>
     <h2>Documents</h2>
-    <form class="card upload admin-only" id="docForm">
+    <form class="card upload" id="docForm">
       <label>Document name
         <input type="text" id="docName" placeholder="e.g. Employee policy manual" required>
       </label>
@@ -219,20 +192,6 @@
         <thead><tr><th>Name</th><th>File</th><th>Type</th><th class="num">Pages</th><th class="num">Chunks</th><th>Added</th><th></th></tr></thead>
         <tbody id="docBody"></tbody>
       </table>
-    </div>
-  </section>
-
-  <!-- USAGE (admins) -->
-  <section id="tab-usage" class="tab" hidden>
-    <div class="row"><h2 class="grow">Usage</h2><button class="btn" id="usageRefresh">Refresh</button></div>
-    <div class="tiles" id="usageTiles"></div>
-    <h2 style="font-size:15px">By user</h2>
-    <div class="card table-wrap">
-      <table><thead><tr><th>User</th><th class="num">Messages</th><th class="num">Cost</th></tr></thead><tbody id="usageUsers"></tbody></table>
-    </div>
-    <h2 style="font-size:15px">Recent messages</h2>
-    <div class="card table-wrap">
-      <table><thead><tr><th>When</th><th>User</th><th>Question</th><th>Path</th><th class="num">Calls</th><th class="num">Time</th><th class="num">Cost</th><th>Result</th></tr></thead><tbody id="usageRecent"></tbody></table>
     </div>
   </section>
 </main>
@@ -277,13 +236,8 @@
   }
 
   // Calls the API and turns FastAPI error bodies into readable messages.
-  let auth = null;   // { token, user } once signed in
-  try { auth = JSON.parse(localStorage.getItem("auth")); } catch (e) { auth = null; }
-
-  async function api(path, options = {}) {
-    const headers = { ...(options.headers || {}), ...(auth ? { Authorization: "Bearer " + auth.token } : {}) };
-    const res = await fetch(path, { ...options, headers });
-    if (res.status === 401 && auth && path !== "/auth/login") { signOut("Your session ended. Please sign in again."); throw new Error("Signed out"); }
+  async function api(path, options) {
+    const res = await fetch(path, options);
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       const detail = body && body.detail;
@@ -294,16 +248,15 @@
   }
 
   /* ---------- tabs ---------- */
-  const TABS = ["chat", "employees", "documents", "usage"];
+  const TABS = ["chat", "employees", "documents"];
   function showTab(name) {
-    if (!TABS.includes(name) || (name === "usage" && !isAdmin())) name = "chat";
+    if (!TABS.includes(name)) name = "chat";
     TABS.forEach((t) => {
       $("tab-" + t).hidden = t !== name;
       document.querySelector(`nav [data-tab="${t}"]`).setAttribute("aria-selected", t === name);
     });
     if (name === "employees") loadEmployees();
     if (name === "documents") loadDocuments();
-    if (name === "usage") loadUsage();
   }
   document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => (location.hash = b.dataset.tab)));
   window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
@@ -388,8 +341,7 @@
 
   function connectSocket() {
     if (socket) socket.disconnect();
-    socket = io({ path: "/ws/socket.io", auth: { token: auth.token } });
-    socket.on("connect_error", (err) => { if (err.message === "unauthorized") signOut("Your session ended. Please sign in again."); });
+    socket = io({ path: "/ws/socket.io" });
     socket.on("connect", () => { $("dot").classList.add("on"); $("status").textContent = "connected"; refreshChat(); });
     socket.on("disconnect", () => { $("dot").classList.remove("on"); $("status").textContent = "disconnected"; dropProgress(); finishChat(); });
     socket.on("step", (s) => {
@@ -485,7 +437,7 @@
       const kpi = el("td"); kpi.append(kpiCell(emp.kpi_score)); tr.append(kpi);
       tr.append(el("td", "num", emp.total_absence));
       const actions = el("td", "actions");
-      const edit = el("button", "btn small admin-only", "Edit"), del = el("button", "btn small danger admin-only", "Delete");
+      const edit = el("button", "btn small", "Edit"), del = el("button", "btn small danger", "Delete");
       edit.addEventListener("click", () => openEmployeeDialog(emp));
       del.addEventListener("click", () => deleteEmployee(emp));
       actions.append(edit, del); tr.append(actions); body.append(tr);
@@ -603,7 +555,7 @@
         const tr = el("tr");
         tr.append(el("td", null, d.name), el("td", null, d.filename), el("td", null, d.file_type.toUpperCase()), el("td", "num", d.page_count ?? "–"), el("td", "num", d.chunk_count),
           dateCell(d.created_at));
-        const actions = el("td", "actions"), del = el("button", "btn small danger admin-only", "Delete");
+        const actions = el("td", "actions"), del = el("button", "btn small danger", "Delete");
         del.addEventListener("click", () => deleteDocument(d));
         actions.append(del); tr.append(actions); body.append(tr);
       });
@@ -615,83 +567,8 @@
     catch (e) { toast(e.message, true); }
   }
 
-  /* ---------- sign in and out ---------- */
-  function isAdmin() { return !!auth && auth.user.role === "admin"; }
-
-  function showApp() {
-    document.body.classList.remove("logged-out");
-    document.body.classList.toggle("is-admin", isAdmin());
-    $("loginScreen").hidden = true;
-    $("whoName").textContent = auth.user.name;
-    $("whoRole").textContent = auth.user.role;
-    $("whoRole").className = "badge " + auth.user.role;
-    connectSocket();
-    showTab(location.hash.slice(1));
-  }
-  function showLogin(message) {
-    document.body.classList.add("logged-out");
-    document.body.classList.remove("is-admin");
-    $("loginScreen").hidden = false;
-    $("loginError").textContent = message || "";
-    $("loginPassword").value = "";
-    $("loginEmail").focus();
-  }
-  function signOut(message) {
-    auth = null;
-    try { localStorage.removeItem("auth"); } catch (e) {}
-    if (socket) { socket.disconnect(); socket = null; }
-    dropProgress(); conversationId = null; finishChat(); showEmptyState();
-    showLogin(message);
-  }
-  $("logout").addEventListener("click", () => signOut(""));
-
-  $("loginForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    $("loginBtn").disabled = true;
-    $("loginError").textContent = "";
-    try {
-      const body = new URLSearchParams({ username: $("loginEmail").value.trim(), password: $("loginPassword").value });
-      const res = await api("/auth/login", { method: "POST", body });
-      auth = { token: res.access_token, user: res.user };
-      try { localStorage.setItem("auth", JSON.stringify(auth)); } catch (err) {}
-      showApp();
-    } catch (err) { $("loginError").textContent = err.message; }
-    $("loginBtn").disabled = false;
-  });
-
-  /* ---------- usage (admins) ---------- */
-  const money = (n) => "$" + (n < 0.01 ? n.toFixed(6) : n.toFixed(4));
-  async function loadUsage() {
-    try {
-      const u = await api("/usage");
-      const tiles = $("usageTiles");
-      tiles.replaceChildren();
-      [["Messages today", u.today.runs], ["Cost today", money(u.today.cost_usd)], ["Messages, all time", u.all_time.runs], ["Cost, all time", money(u.all_time.cost_usd)]].forEach(([label, value]) => {
-        const t = el("div", "card tile"); t.append(el("div", "muted", label), el("div", "big", String(value))); tiles.append(t);
-      });
-      const users = $("usageUsers"); users.replaceChildren();
-      if (!u.by_user.length) { const tr = el("tr", "empty-row"), td = el("td", null, "No usage yet."); td.colSpan = 3; tr.append(td); users.append(tr); }
-      u.by_user.forEach((r) => { const tr = el("tr"); tr.append(el("td", null, `${r.name} (${r.email})`), el("td", "num", r.runs), el("td", "num", money(r.cost_usd))); users.append(tr); });
-      const recent = $("usageRecent"); recent.replaceChildren();
-      if (!u.recent.length) { const tr = el("tr", "empty-row"), td = el("td", null, "Nothing yet."); td.colSpan = 8; tr.append(td); recent.append(tr); }
-      u.recent.forEach((r) => {
-        const tr = el("tr");
-        tr.append(el("td", null, new Date(r.created_at + "Z").toLocaleString()), el("td", null, r.user), el("td", "wrap", r.question || ""), el("td", "wrap", (r.path || "").replaceAll(" -> ", " › ")),
-          el("td", "num", r.llm_calls ?? ""), el("td", "num", r.total_ms != null ? (r.total_ms / 1000).toFixed(1) + " s" : ""), el("td", "num", money(r.cost_usd || 0)),
-          el("td", r.status === "ok" && r.verdict === "pass" ? "" : "bad", r.status === "ok" ? (r.verdict || "ok") : "error"));
-        recent.append(tr);
-      });
-    } catch (e) { toast(e.message, true); }
-  }
-  $("usageRefresh").addEventListener("click", loadUsage);
-
-  /* ---------- start ---------- */
-  async function start() {
-    if (!auth) return showLogin("");
-    try { auth.user = await api("/auth/me"); showApp(); }
-    catch (e) { if (auth) signOut("Please sign in."); }
-  }
-  start();
+  connectSocket();
+  showTab(location.hash.slice(1));
 </script>
 </body>
 </html>

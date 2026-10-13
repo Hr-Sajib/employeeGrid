@@ -39,7 +39,7 @@ async def _emit_step(step: dict):
 
 
 def _new_stats() -> dict:
-    return {"nodes": [], "llm_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "final": {}, "start": time.perf_counter()}
+    return {"nodes": [], "llm_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "start": time.perf_counter()}
 
 
 def _stats_dict() -> dict:
@@ -48,19 +48,6 @@ def _stats_dict() -> dict:
 
 def add_cost(amount: float):
     _stats_dict()["cost"] += amount or 0.0
-
-
-def run_summary() -> dict:
-    """Numbers about the current run, for the usage log. Safe to call even if the run crashed."""
-    stats = _stats_dict()
-    final, plan = stats["final"], stats["final"].get("plan", {})
-    return {
-        "path": " -> ".join(name for name, _ in stats["nodes"]),
-        "total_ms": int((time.perf_counter() - stats["start"]) * 1000),
-        "llm_calls": stats["llm_calls"], "input_tokens": stats["input_tokens"], "output_tokens": stats["output_tokens"],
-        "cost": stats["cost"], "verdict": final.get("verdict"), "retries": final.get("retries", 0),
-        "needs_employee_data": plan.get("needs_employee_data"), "needs_documents": plan.get("needs_documents"),
-    }
 
 
 def short(value, limit: int = 200) -> str:
@@ -86,7 +73,6 @@ def begin_run(conversation_id, history: list[dict]):
 
 def end_run(final: dict):
     stats = _stats_dict()
-    stats["final"] = {"verdict": final.get("verdict"), "retries": final.get("retries", 0), "plan": final.get("plan", {})}
     total = (time.perf_counter() - stats["start"]) * 1000
     plan = final.get("plan", {})
     info("plan: employee_data=%s documents=%s doc_query=%r", plan.get("needs_employee_data"), plan.get("needs_documents"), plan.get("doc_query"))
