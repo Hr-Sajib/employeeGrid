@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 from pydantic import BaseModel
 
@@ -9,3 +10,4 @@ class DocumentResponse(BaseModel):
     file_type: str
     page_count: int | None
     chunk_count: int
+    created_at: datetime | None = None

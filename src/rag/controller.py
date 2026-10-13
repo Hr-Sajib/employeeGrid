@@ -1,4 +1,6 @@
+from uuid import UUID
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from src.rag.chunk import split_text
 from src.rag.dtos import DocumentResponse
@@ -50,4 +52,31 @@ class RagController:
             file_type=document.file_type,
             page_count=document.page_count,
             chunk_count=len(pieces),
+            created_at=document.created_at,
         )
+
+    @staticmethod
+    def list_documents(db: Session) -> list[DocumentResponse]:
+        rows = (
+            db.query(RagDocument, func.count(RagChunk.id))
+            .outerjoin(RagChunk, RagChunk.document_id == RagDocument.id)
+            .group_by(RagDocument.id)
+            .order_by(RagDocument.created_at.desc())
+            .all()
+        )
+        return [
+            DocumentResponse(
+                id=d.id, name=d.name, filename=d.filename, file_type=d.file_type,
+                page_count=d.page_count, chunk_count=count, created_at=d.created_at,
+            )
+            for d, count in rows
+        ]
+
+    @staticmethod
+    def delete(db: Session, document_id: UUID) -> dict:
+        document = db.get(RagDocument, document_id)
+        if not document:
+            raise HTTPException(404, "Document not found")
+        db.delete(document)
+        db.commit()
+        return {"deleted": str(document_id)}

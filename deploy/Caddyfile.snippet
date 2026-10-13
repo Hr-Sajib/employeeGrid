@@ -1,0 +1,23 @@
+# A block to ADD to /var/www/vps-infra/Caddyfile, in the personal section next to the finemed and farmflow blocks.
+# Do not edit any other domain's block. The DNS record for this hostname is already in place (Cloudflare, proxied).
+# Steps, in this order (from /var/www/vps-infra):
+#   1. cp Caddyfile Caddyfile.bak.$(date +%Y%m%d-%H%M%S)       # the same timestamped backup the other edits left
+#   2. add ONLY this block; do not touch, reorder or reformat any other block
+#   3. docker exec caddy caddy validate --config /etc/caddy/Caddyfile   # dry run; stop here if it reports an error
+#   4. docker exec caddy caddy reload   --config /etc/caddy/Caddyfile   # zero downtime; never restart the caddy container
+# caddy is already attached to sajib-net, so vps-infra/docker-compose.yml does not change.
+
+employeegrid.sajibofficial.me {
+    tls /etc/caddy/certs/sajib-origin-cert.pem /etc/caddy/certs/sajib-origin-key.pem
+
+    encode gzip zstd
+
+    reverse_proxy employee-assistant:5004
+
+    log {
+        output file /data/caddy/employee-assistant.log {
+            roll_size 10MiB
+            roll_keep 10
+        }
+    }
+}

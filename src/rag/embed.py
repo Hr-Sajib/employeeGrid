@@ -1,6 +1,7 @@
 import httpx
 from fastapi import HTTPException
 from src.utils.settings import settings
+from src.utils.trace import add_cost
 
 BATCH_SIZE = 64
 
@@ -16,5 +17,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         )
         if res.status_code != 200:
             raise HTTPException(502, f"Embedding error: {res.text}")
-        vectors += [d["embedding"] for d in sorted(res.json()["data"], key=lambda d: d["index"])]
+        body = res.json()
+        add_cost((body.get("usage") or {}).get("cost"))
+        vectors += [d["embedding"] for d in sorted(body["data"], key=lambda d: d["index"])]
     return vectors

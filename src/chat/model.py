@@ -15,6 +15,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid, ForeignKey("users.id", ondelete="SET NULL"), index=True)   # the owner
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Employee Assistant</title>
+<link rel="icon" href="/static/employee_icon.png">
+<style>
+  :root {
+    --bg: #f4f6f9; --surface: #ffffff; --ink: #14202e; --muted: #5f6f81; --line: #dbe1e8; --hover: #eef2f7;
+    --accent: #2b59d9; --accent-ink: #ffffff; --good: #1f8a4c; --warn: #b7791f; --bad: #c0392b;
+    --bubble-bot: #eef0f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f151c; --surface: #172029; --ink: #e5ebf2; --muted: #93a3b5; --line: #263341; --hover: #1d2833;
+      --accent: #5b86f0; --accent-ink: #0b1220; --good: #4cc380; --warn: #e0a24d; --bad: #f07b6e;
+      --bubble-bot: #232b36;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .brand { display: block; width: 36px; height: 36px; background: #fff; border-radius: 9999px; object-fit: contain; }
+  nav { display: flex; gap: 4px; flex: 1; }
+  nav button { background: none; border: 0; padding: 7px 14px; border-radius: 8px; color: var(--muted); font-weight: 500; }
+  nav button:hover { background: var(--hover); color: var(--ink); }
+  nav button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+  .dot.on { background: var(--good); }
+
+  main { flex: 1; min-height: 0; display: flex; justify-content: center; padding: 20px; }
+  .tab { width: 100%; max-width: 1000px; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+  .tab[hidden] { display: none; }
+  h2 { margin: 0; font-size: 18px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  .btn { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; }
+  .btn:hover:not(:disabled) { background: var(--hover); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 500; }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+  .btn.danger { color: var(--bad); }
+  .btn.small { padding: 4px 10px; font-size: 13px; }
+  [hidden] { display: none !important; }
+  input[type="text"], input[type="password"], input[type="number"], input[type="search"], textarea { width: 100%; padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+
+  /* chat */
+  #tab-chat { height: 100%; }
+  .chat-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #messages { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .empty { margin: auto; text-align: center; color: var(--muted); display: flex; flex-direction: column; gap: 12px; align-items: center; }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 600px; }
+  .suggestions button { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+  .suggestions button:hover { background: var(--hover); }
+  .msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; overflow-wrap: anywhere; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; white-space: pre-wrap; }
+  .msg.bot { align-self: flex-start; background: var(--bubble-bot); border-bottom-left-radius: 4px; }
+  .msg.bot p { margin: 0 0 8px; } .msg.bot p:last-child { margin-bottom: 0; }
+  .msg.bot ul { margin: 0 0 8px; padding-left: 20px; }
+  .progress { align-self: flex-start; display: flex; flex-direction: column; gap: 4px; padding: 2px 4px; }
+  .step { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--muted); }
+  .step .mark { width: 10px; flex: none; text-align: center; }
+  .step.running .mark::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .step.done .mark::before { content: "✓"; color: var(--good); font-size: 11px; }
+  .step.done { opacity: .85; }
+  @keyframes pulse { 50% { opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .step.running .mark::before { animation: none; } }
+  details.trace { align-self: flex-start; margin: -6px 0 0 4px; font-size: 12px; color: var(--muted); }
+  details.trace summary { cursor: pointer; padding: 2px 0; }
+  details.trace .step { margin-top: 3px; }
+  .msg.error { align-self: center; max-width: 90%; background: none; border: 1px solid var(--bad); color: var(--bad); font-size: 13px; }
+  .cite { font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 4px; padding: 0 4px; margin: 0 1px; }
+  .sources { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+  .sources div { margin-top: 2px; }
+  .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); align-items: flex-end; }
+  .composer textarea { resize: none; max-height: 140px; }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--hover); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; user-select: none; }
+  th.sortable { cursor: pointer; }
+  th.sortable:hover { color: var(--ink); }
+  td.num, th.num { text-align: right; }
+  td.actions { text-align: right; }
+  td.actions .btn + .btn { margin-left: 6px; }
+  .kpi { display: inline-flex; align-items: center; gap: 8px; }
+  .kpi-bar { width: 60px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .kpi-bar i { display: block; height: 100%; background: var(--c); }
+  .empty-row td { text-align: center; color: var(--muted); padding: 28px; white-space: normal; }
+
+  /* documents */
+  .upload { padding: 16px; display: grid; gap: 12px; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px; text-align: center; color: var(--muted); cursor: pointer; }
+  .drop.over, .drop:hover { border-color: var(--accent); color: var(--ink); }
+  .drop input { display: none; }
+  .notice { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+  .notice.ok { border: 1px solid var(--good); color: var(--good); }
+  .notice.err { border: 1px solid var(--bad); color: var(--bad); }
+
+  /* dialog + toast */
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--surface); color: var(--ink); width: min(440px, 92vw); }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog form { display: grid; gap: 12px; padding: 20px; }
+  dialog h3 { margin: 0; font-size: 17px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-error { color: var(--bad); font-size: 13px; min-height: 18px; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 16px; border-radius: 8px; background: var(--ink); color: var(--bg); font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; }
+  #toast.show { opacity: 1; }
+  #toast.error { background: var(--bad); color: #fff; }
+
+  /* login, signed-in user, usage */
+  body.logged-out header nav, body.logged-out .who, body.logged-out .status, body.logged-out main { display: none; }
+  body:not(.is-admin) .admin-only { display: none !important; }
+  .login { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .login-card { width: min(380px, 100%); padding: 24px; display: grid; gap: 14px; }
+  .login-card h2 { font-size: 20px; }
+  .who { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.admin { color: var(--accent); border-color: var(--accent); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .tile { padding: 14px 16px; }
+  .tile .big { font-size: 22px; font-weight: 600; }
+  td.wrap { white-space: normal; min-width: 220px; }
+  td.bad { color: var(--bad); }
+
+  @media (max-width: 640px) { main { padding: 12px; } .top { padding: 10px 12px; } .two { grid-template-columns: 1fr; } .msg { max-width: 92%; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <img class="brand" src="/static/employee_icon.png" alt="Employee Assistant" title="Employee Assistant" width="36" height="36">
+  <nav role="tablist">
+    <button role="tab" data-tab="chat">Chat</button>
+    <button role="tab" data-tab="employees">Employees</button>
+    <button role="tab" data-tab="documents">Documents</button>
+    <button role="tab" data-tab="usage" class="admin-only">Usage</button>
+  </nav>
+  <div class="status"><span class="dot" id="dot"></span><span id="status">connecting</span></div>
+  <div class="who"><span id="whoName"></span><span class="badge" id="whoRole"></span><button class="btn small" id="logout" type="button">Log out</button></div>
+</header>
+
+<div class="login" id="loginScreen" hidden>
+  <form class="card login-card" id="loginForm">
+    <h2>Sign in</h2>
+    <label>Email <input type="text" id="loginEmail" autocomplete="username" required></label>
+    <label>Password <input type="password" id="loginPassword" autocomplete="current-password" required></label>
+    <div class="form-error" id="loginError"></div>
+    <button class="btn primary" id="loginBtn" type="submit">Sign in</button>
+  </form>
+</div>
+
+<main>
+  <!-- CHAT -->
+  <section id="tab-chat" class="tab">
+    <div class="row"><h2 class="grow">Chat</h2><button class="btn" id="newChat">New chat</button></div>
+    <div class="card chat-card">
+      <div id="messages"></div>
+      <form class="composer" id="chatForm">
+        <textarea id="chatInput" rows="1" placeholder="Ask about employees or uploaded documents (Shift+Enter for a new line)"></textarea>
+        <button class="btn primary" id="sendBtn" type="submit" disabled>Send</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- EMPLOYEES -->
+  <section id="tab-employees" class="tab" hidden>
+    <div class="row">
+      <h2 class="grow">Employees <span class="muted" id="empCount"></span></h2>
+      <input type="search" id="empSearch" placeholder="Search by name" style="width:220px">
+      <button class="btn primary admin-only" id="addEmp">Add employee</button>
+    </div>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr id="empHead"></tr></thead>
+        <tbody id="empBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- DOCUMENTS -->
+  <section id="tab-documents" class="tab" hidden>
+    <h2>Documents</h2>
+    <form class="card upload admin-only" id="docForm">
+      <label>Document name
+        <input type="text" id="docName" placeholder="e.g. Employee policy manual" required>
+      </label>
+      <label class="drop" id="drop">
+        <input type="file" id="docFile" accept=".pdf,.docx">
+        <span id="dropText">Drop a .pdf or .docx here, or click to choose (max 20 MB)</span>
+      </label>
+      <div class="row">
+        <button class="btn primary" id="docBtn" type="submit">Upload and process</button>
+        <span class="muted" id="docHint"></span>
+      </div>
+      <div id="docNotice" hidden></div>
+    </form>
+    <div class="row"><h2 class="grow" style="font-size:15px">Fed documents <span class="muted" id="docCount"></span></h2></div>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>File</th><th>Type</th><th class="num">Pages</th><th class="num">Chunks</th><th>Added</th><th></th></tr></thead>
+        <tbody id="docBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- USAGE (admins) -->
+  <section id="tab-usage" class="tab" hidden>
+    <div class="row"><h2 class="grow">Usage</h2><button class="btn" id="usageRefresh">Refresh</button></div>
+    <div class="tiles" id="usageTiles"></div>
+    <h2 style="font-size:15px">By user</h2>
+    <div class="card table-wrap">
+      <table><thead><tr><th>User</th><th class="num">Messages</th><th class="num">Cost</th></tr></thead><tbody id="usageUsers"></tbody></table>
+    </div>
+    <h2 style="font-size:15px">Recent messages</h2>
+    <div class="card table-wrap">
+      <table><thead><tr><th>When</th><th>User</th><th>Question</th><th>Path</th><th class="num">Calls</th><th class="num">Time</th><th class="num">Cost</th><th>Result</th></tr></thead><tbody id="usageRecent"></tbody></table>
+    </div>
+  </section>
+</main>
+
+<dialog id="empDialog">
+  <form id="empForm" method="dialog">
+    <h3 id="empTitle">Add employee</h3>
+    <label>Name <input type="text" id="fName" required></label>
+    <div class="two">
+      <label>Monthly salary <input type="number" id="fSalary" min="0" step="0.01" required></label>
+      <label>KPI score (0 to 100) <input type="number" id="fKpi" min="0" max="100" step="1" required></label>
+    </div>
+    <label>Total absence <input type="number" id="fAbsence" min="0" step="1" required></label>
+    <div class="form-error" id="empError"></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="empCancel">Cancel</button>
+      <button type="submit" class="btn primary" id="empSave">Save</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  /* ---------- helpers ---------- */
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  let toastTimer;
+  function toast(message, isError) {
+    const t = $("toast");
+    t.textContent = message;
+    t.className = "show" + (isError ? " error" : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.className = ""), 3500);
+  }
+
+  // Calls the API and turns FastAPI error bodies into readable messages.
+  let auth = null;   // { token, user } once signed in
+  try { auth = JSON.parse(localStorage.getItem("auth")); } catch (e) { auth = null; }
+
+  async function api(path, options = {}) {
+    const headers = { ...(options.headers || {}), ...(auth ? { Authorization: "Bearer " + auth.token } : {}) };
+    const res = await fetch(path, { ...options, headers });
+    if (res.status === 401 && auth && path !== "/auth/login") { signOut("Your session ended. Please sign in again."); throw new Error("Signed out"); }
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const detail = body && body.detail;
+      const message = Array.isArray(detail) ? detail.map((d) => `${d.loc.slice(1).join(".")}: ${d.msg}`).join("; ") : detail || `Request failed (${res.status})`;
+      throw new Error(message);
+    }
+    return body;
+  }
+
+  /* ---------- tabs ---------- */
+  const TABS = ["chat", "employees", "documents", "usage"];
+  function showTab(name) {
+    if (!TABS.includes(name) || (name === "usage" && !isAdmin())) name = "chat";
+    TABS.forEach((t) => {
+      $("tab-" + t).hidden = t !== name;
+      document.querySelector(`nav [data-tab="${t}"]`).setAttribute("aria-selected", t === name);
+    });
+    if (name === "employees") loadEmployees();
+    if (name === "documents") loadDocuments();
+    if (name === "usage") loadUsage();
+  }
+  document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => (location.hash = b.dataset.tab)));
+  window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+
+  /* ---------- chat ---------- */
+  let socket = null;
+  const messages = $("messages"), chatInput = $("chatInput"), sendBtn = $("sendBtn");
+  let conversationId = null, progress = null, busy = false;
+
+  const SUGGESTIONS = ["What is the salary of employee 3?", "Who has the highest KPI score?", "List employees with more than 5 absences", "Summarize the uploaded policy document"];
+
+  function showEmptyState() {
+    messages.replaceChildren();
+    const box = el("div", "empty");
+    box.id = "emptyState";
+    box.append(el("div", null, "Ask about employee data or the documents you have uploaded."));
+    const row = el("div", "suggestions");
+    SUGGESTIONS.forEach((s) => {
+      const b = el("button", null, s);
+      b.type = "button";
+      b.addEventListener("click", () => { chatInput.value = s; $("chatForm").requestSubmit(); });
+      row.append(b);
+    });
+    box.append(row);
+    messages.append(box);
+  }
+
+  function refreshChat() { sendBtn.disabled = busy || !(socket && socket.connected); }
+  function addMessage(cls, text) {
+    const empty = $("emptyState"); if (empty) empty.remove();
+    const m = el("div", "msg " + cls, text);
+    messages.append(m);
+    messages.scrollTop = messages.scrollHeight;
+    return m;
+  }
+
+  // Bold text and [E1] / [D2] / [C1] citation markers, built with DOM nodes so nothing is injected as HTML.
+  function inline(parent, text) {
+    text.split(/(\*\*[^*]+\*\*|\[[EDC]\d+\])/).forEach((part) => {
+      if (!part) return;
+      if (part.startsWith("**")) parent.append(el("strong", null, part.slice(2, -2)));
+      else if (/^\[[EDC]\d+\]$/.test(part)) parent.append(el("span", "cite", part.slice(1, -1)));
+      else parent.append(document.createTextNode(part));
+    });
+  }
+  function renderReply(target, text) {
+    const [body, sources] = text.split(/\n\nSources:\n/);
+    target.replaceChildren();
+    body.split(/\n{2,}/).forEach((block) => {
+      const lines = block.split("\n");
+      if (lines.every((l) => /^\s*[-*] /.test(l))) {
+        const ul = el("ul");
+        lines.forEach((l) => { const li = el("li"); inline(li, l.replace(/^\s*[-*] /, "")); ul.append(li); });
+        target.append(ul);
+      } else {
+        const p = el("p");
+        lines.forEach((l, i) => { if (i) p.append(el("br")); inline(p, l); });
+        target.append(p);
+      }
+    });
+    if (sources) {
+      const box = el("div", "sources");
+      box.append(el("strong", null, "Sources"));
+      sources.split("\n").forEach((l) => { const d = el("div"); inline(d, l); box.append(d); });
+      target.append(box);
+    }
+  }
+
+  function finishChat() { progress = null; busy = false; refreshChat(); chatInput.focus(); }
+
+  // Quiet "what the agent is doing" lines, shown until the answer arrives.
+  function startProgress() {
+    const box = el("div", "progress");
+    const first = el("div", "step running");
+    first.append(el("span", "mark"), el("span", "text", "Starting…"));
+    box.append(first);
+    messages.append(box);
+    messages.scrollTop = messages.scrollHeight;
+    progress = { box, first, lines: new Map(), t0: performance.now() };
+  }
+  function dropProgress() { if (progress) progress.box.remove(); progress = null; }
+
+  function connectSocket() {
+    if (socket) socket.disconnect();
+    socket = io({ path: "/ws/socket.io", auth: { token: auth.token } });
+    socket.on("connect_error", (err) => { if (err.message === "unauthorized") signOut("Your session ended. Please sign in again."); });
+    socket.on("connect", () => { $("dot").classList.add("on"); $("status").textContent = "connected"; refreshChat(); });
+    socket.on("disconnect", () => { $("dot").classList.remove("on"); $("status").textContent = "disconnected"; dropProgress(); finishChat(); });
+    socket.on("step", (s) => {
+      if (!progress) return;
+      if (progress.first) { progress.first.remove(); progress.first = null; }
+      let line = progress.lines.get(s.id);
+      if (!line) {
+        line = el("div", "step");
+        line.append(el("span", "mark"), el("span", "text"));
+        progress.lines.set(s.id, line);
+        progress.box.append(line);
+      }
+      line.className = "step " + s.status;
+      line.querySelector(".text").textContent = s.label + (s.detail ? " · " + s.detail : "");
+      messages.scrollTop = messages.scrollHeight;
+    });
+    socket.on("reply", (d) => {
+      conversationId = d.conversation_id;
+      const bubble = addMessage("bot", "");
+      renderReply(bubble, d.reply);
+      if (progress && progress.lines.size) {
+        const seconds = ((performance.now() - progress.t0) / 1000).toFixed(1);
+        const trace = el("details", "trace");
+        trace.append(el("summary", null, `${progress.lines.size} steps · ${seconds} s`));
+        progress.lines.forEach((line) => { line.className = "step done"; trace.append(line); });
+        bubble.after(trace);
+      }
+      dropProgress();
+      messages.scrollTop = messages.scrollHeight;
+      finishChat();
+    });
+    socket.on("error", (d) => { dropProgress(); addMessage("error", d.detail); finishChat(); });
+  }
+
+  $("chatForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text || busy || !(socket && socket.connected)) return;
+    addMessage("user", text);
+    startProgress();
+    socket.emit("chat", { conversation_id: conversationId, message: text });
+    chatInput.value = ""; chatInput.style.height = "auto";
+    busy = true; refreshChat();
+  });
+  chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("chatForm").requestSubmit(); } });
+  chatInput.addEventListener("input", () => { chatInput.style.height = "auto"; chatInput.style.height = chatInput.scrollHeight + "px"; });
+  $("newChat").addEventListener("click", () => { dropProgress(); conversationId = null; finishChat(); showEmptyState(); });
+  showEmptyState();
+
+  /* ---------- employees ---------- */
+  const COLUMNS = [
+    ["employee_id", "ID", true, "num"], ["employee_name", "Name", true, ""], ["monthly_salary", "Monthly salary", true, "num"],
+    ["kpi_score", "KPI score", true, ""], ["total_absence", "Absences", true, "num"], [null, "", false, ""],
+  ];
+  let employees = [], sort = { key: "employee_id", dir: 1 }, editingId = null;
+
+  COLUMNS.forEach(([key, label, sortable, cls]) => {
+    const th = el("th", (sortable ? "sortable " : "") + cls, label);
+    if (sortable) th.addEventListener("click", () => { sort = { key, dir: sort.key === key ? -sort.dir : 1 }; renderEmployees(); });
+    $("empHead").append(th);
+  });
+
+  async function loadEmployees() {
+    const q = $("empSearch").value.trim();
+    try {
+      employees = await api(q ? `/employees/name/${encodeURIComponent(q)}` : "/employees");
+      renderEmployees();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function kpiCell(score) {
+    const wrap = el("span", "kpi");
+    const bar = el("span", "kpi-bar"), fill = el("i");
+    fill.style.width = score + "%";
+    fill.style.setProperty("--c", score >= 80 ? "var(--good)" : score >= 60 ? "var(--warn)" : "var(--bad)");
+    bar.append(fill);
+    wrap.append(bar, document.createTextNode(String(score)));
+    return wrap;
+  }
+
+  function renderEmployees() {
+    $("empCount").textContent = `(${employees.length})`;
+    const body = $("empBody");
+    body.replaceChildren();
+    if (!employees.length) {
+      const tr = el("tr", "empty-row"), td = el("td", null, "No employees found.");
+      td.colSpan = COLUMNS.length; tr.append(td); body.append(tr);
+      return;
+    }
+    [...employees].sort((a, b) => (a[sort.key] > b[sort.key] ? 1 : a[sort.key] < b[sort.key] ? -1 : 0) * sort.dir).forEach((emp) => {
+      const tr = el("tr");
+      tr.append(el("td", "num", emp.employee_id), el("td", null, emp.employee_name), el("td", "num", emp.monthly_salary.toLocaleString(undefined, { maximumFractionDigits: 2 })));
+      const kpi = el("td"); kpi.append(kpiCell(emp.kpi_score)); tr.append(kpi);
+      tr.append(el("td", "num", emp.total_absence));
+      const actions = el("td", "actions");
+      const edit = el("button", "btn small admin-only", "Edit"), del = el("button", "btn small danger admin-only", "Delete");
+      edit.addEventListener("click", () => openEmployeeDialog(emp));
+      del.addEventListener("click", () => deleteEmployee(emp));
+      actions.append(edit, del); tr.append(actions); body.append(tr);
+    });
+  }
+
+  let searchTimer;
+  $("empSearch").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadEmployees, 250); });
+
+  const empDialog = $("empDialog");
+  function openEmployeeDialog(emp) {
+    editingId = emp ? emp.employee_id : null;
+    $("empTitle").textContent = emp ? `Edit employee #${emp.employee_id}` : "Add employee";
+    $("fName").value = emp ? emp.employee_name : "";
+    $("fSalary").value = emp ? emp.monthly_salary : "";
+    $("fKpi").value = emp ? emp.kpi_score : "";
+    $("fAbsence").value = emp ? emp.total_absence : 0;
+    $("empError").textContent = "";
+    empDialog.showModal();
+    $("fName").focus();
+  }
+  $("addEmp").addEventListener("click", () => openEmployeeDialog(null));
+  $("empCancel").addEventListener("click", () => empDialog.close());
+
+  $("empForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      employee_name: $("fName").value.trim(),
+      monthly_salary: Number($("fSalary").value),
+      kpi_score: Number($("fKpi").value),
+      total_absence: Number($("fAbsence").value),
+    };
+    $("empSave").disabled = true;
+    try {
+      await api(editingId ? `/employees/${editingId}` : "/employees", {
+        method: editingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      empDialog.close();
+      toast(editingId ? "Employee updated" : "Employee added");
+      loadEmployees();
+    } catch (err) { $("empError").textContent = err.message; }
+    $("empSave").disabled = false;
+  });
+
+  async function deleteEmployee(emp) {
+    if (!confirm(`Delete ${emp.employee_name} (ID ${emp.employee_id})? This cannot be undone.`)) return;
+    try { await api(`/employees/${emp.employee_id}`, { method: "DELETE" }); toast("Employee deleted"); loadEmployees(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  /* ---------- documents ---------- */
+  const MAX_BYTES = 20 * 1024 * 1024;
+  const docFile = $("docFile"), drop = $("drop");
+
+  function showDocNotice(kind, text) {
+    const n = $("docNotice");
+    n.hidden = !text;
+    n.className = "notice " + kind;
+    n.textContent = text || "";
+  }
+  function describeFile() {
+    const f = docFile.files[0];
+    $("dropText").textContent = f ? `${f.name} (${(f.size / 1024).toFixed(0)} KB)` : "Drop a .pdf or .docx here, or click to choose (max 20 MB)";
+    if (f && !$("docName").value) $("docName").value = f.name.replace(/\.[^.]+$/, "");
+  }
+  docFile.addEventListener("change", describeFile);
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => { if (e.dataTransfer.files.length) { docFile.files = e.dataTransfer.files; describeFile(); } });
+
+  $("docForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = docFile.files[0];
+    showDocNotice("", "");
+    if (!file) return showDocNotice("err", "Choose a file first.");
+    if (!/\.(pdf|docx)$/i.test(file.name)) return showDocNotice("err", "Only .pdf and .docx files are supported.");
+    if (file.size > MAX_BYTES) return showDocNotice("err", "The file is larger than 20 MB.");
+
+    const form = new FormData();
+    form.append("name", $("docName").value.trim());
+    form.append("file", file);
+    $("docBtn").disabled = true;
+    $("docHint").textContent = "Reading, splitting and embedding the document. Large files can take a while.";
+    try {
+      const doc = await api("/documents", { method: "POST", body: form });
+      const pages = doc.page_count ? `${doc.page_count} pages, ` : "";
+      showDocNotice("ok", `“${doc.name}” was added: ${pages}${doc.chunk_count} chunks stored.`);
+      $("docForm").reset(); describeFile();
+      loadDocuments();
+    } catch (err) { showDocNotice("err", err.message); }
+    $("docBtn").disabled = false;
+    $("docHint").textContent = "";
+  });
+
+  function dateCell(iso) {
+    const td = el("td", null, iso ? new Date(iso + "Z").toLocaleDateString() : "");
+    if (iso) td.title = new Date(iso + "Z").toLocaleString();
+    return td;
+  }
+
+  async function loadDocuments() {
+    try {
+      const docs = await api("/documents");
+      $("docCount").textContent = `(${docs.length})`;
+      const body = $("docBody");
+      body.replaceChildren();
+      if (!docs.length) {
+        const tr = el("tr", "empty-row"), td = el("td", null, "No documents yet. Upload one above and the chat can answer from it.");
+        td.colSpan = 7; tr.append(td); body.append(tr);
+        return;
+      }
+      docs.forEach((d) => {
+        const tr = el("tr");
+        tr.append(el("td", null, d.name), el("td", null, d.filename), el("td", null, d.file_type.toUpperCase()), el("td", "num", d.page_count ?? "–"), el("td", "num", d.chunk_count),
+          dateCell(d.created_at));
+        const actions = el("td", "actions"), del = el("button", "btn small danger admin-only", "Delete");
+        del.addEventListener("click", () => deleteDocument(d));
+        actions.append(del); tr.append(actions); body.append(tr);
+      });
+    } catch (e) { toast(e.message, true); }
+  }
+  async function deleteDocument(d) {
+    if (!confirm(`Delete “${d.name}” and its ${d.chunk_count} chunks? The chat will no longer be able to use it.`)) return;
+    try { await api(`/documents/${d.id}`, { method: "DELETE" }); toast("Document deleted"); loadDocuments(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  /* ---------- sign in and out ---------- */
+  function isAdmin() { return !!auth && auth.user.role === "admin"; }
+
+  function showApp() {
+    document.body.classList.remove("logged-out");
+    document.body.classList.toggle("is-admin", isAdmin());
+    $("loginScreen").hidden = true;
+    $("whoName").textContent = auth.user.name;
+    $("whoRole").textContent = auth.user.role;
+    $("whoRole").className = "badge " + auth.user.role;
+    connectSocket();
+    showTab(location.hash.slice(1));
+  }
+  function showLogin(message) {
+    document.body.classList.add("logged-out");
+    document.body.classList.remove("is-admin");
+    $("loginScreen").hidden = false;
+    $("loginError").textContent = message || "";
+    $("loginPassword").value = "";
+    $("loginEmail").focus();
+  }
+  function signOut(message) {
+    auth = null;
+    try { localStorage.removeItem("auth"); } catch (e) {}
+    if (socket) { socket.disconnect(); socket = null; }
+    dropProgress(); conversationId = null; finishChat(); showEmptyState();
+    showLogin(message);
+  }
+  $("logout").addEventListener("click", () => signOut(""));
+
+  $("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("loginBtn").disabled = true;
+    $("loginError").textContent = "";
+    try {
+      const body = new URLSearchParams({ username: $("loginEmail").value.trim(), password: $("loginPassword").value });
+      const res = await api("/auth/login", { method: "POST", body });
+      auth = { token: res.access_token, user: res.user };
+      try { localStorage.setItem("auth", JSON.stringify(auth)); } catch (err) {}
+      showApp();
+    } catch (err) { $("loginError").textContent = err.message; }
+    $("loginBtn").disabled = false;
+  });
+
+  /* ---------- usage (admins) ---------- */
+  const money = (n) => "$" + (n < 0.01 ? n.toFixed(6) : n.toFixed(4));
+  async function loadUsage() {
+    try {
+      const u = await api("/usage");
+      const tiles = $("usageTiles");
+      tiles.replaceChildren();
+      [["Messages today", u.today.runs], ["Cost today", money(u.today.cost_usd)], ["Messages, all time", u.all_time.runs], ["Cost, all time", money(u.all_time.cost_usd)]].forEach(([label, value]) => {
+        const t = el("div", "card tile"); t.append(el("div", "muted", label), el("div", "big", String(value))); tiles.append(t);
+      });
+      const users = $("usageUsers"); users.replaceChildren();
+      if (!u.by_user.length) { const tr = el("tr", "empty-row"), td = el("td", null, "No usage yet."); td.colSpan = 3; tr.append(td); users.append(tr); }
+      u.by_user.forEach((r) => { const tr = el("tr"); tr.append(el("td", null, `${r.name} (${r.email})`), el("td", "num", r.runs), el("td", "num", money(r.cost_usd))); users.append(tr); });
+      const recent = $("usageRecent"); recent.replaceChildren();
+      if (!u.recent.length) { const tr = el("tr", "empty-row"), td = el("td", null, "Nothing yet."); td.colSpan = 8; tr.append(td); recent.append(tr); }
+      u.recent.forEach((r) => {
+        const tr = el("tr");
+        tr.append(el("td", null, new Date(r.created_at + "Z").toLocaleString()), el("td", null, r.user), el("td", "wrap", r.question || ""), el("td", "wrap", (r.path || "").replaceAll(" -> ", " › ")),
+          el("td", "num", r.llm_calls ?? ""), el("td", "num", r.total_ms != null ? (r.total_ms / 1000).toFixed(1) + " s" : ""), el("td", "num", money(r.cost_usd || 0)),
+          el("td", r.status === "ok" && r.verdict === "pass" ? "" : "bad", r.status === "ok" ? (r.verdict || "ok") : "error"));
+        recent.append(tr);
+      });
+    } catch (e) { toast(e.message, true); }
+  }
+  $("usageRefresh").addEventListener("click", loadUsage);
+
+  /* ---------- start ---------- */
+  async function start() {
+    if (!auth) return showLogin("");
+    try { auth.user = await api("/auth/me"); showApp(); }
+    catch (e) { if (auth) signOut("Please sign in."); }
+  }
+  start();
+</script>
+</body>
+</html>

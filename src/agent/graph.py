@@ -1,8 +1,9 @@
 import logging
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import RetryPolicy
 from src.agent.nodes import calculator, documents, employee_data, router, synthesizer, verifier
 from src.agent.state import AgentState
-from src.utils.trace import LLMLogger, begin_run, end_run, info
+from src.utils.trace import LLMLogger, begin_run, end_run, info, set_progress
 
 
 def pick_branches(state: AgentState) -> list[str]:
@@ -29,13 +30,16 @@ def after_verifier(state: AgentState) -> str:
     return next_node
 
 
+# Retries a node when it raises a transient error (timeout, 5xx, rate limit) after 0.5 s, then 1 s. Max 3 attempts.
+RETRY = RetryPolicy(max_attempts=3, initial_interval=0.5, backoff_factor=2.0)
+
 builder = StateGraph(AgentState)
-builder.add_node("router", router)
-builder.add_node("employee_data", employee_data)
-builder.add_node("documents", documents)
-builder.add_node("synthesizer", synthesizer)
+builder.add_node("router", router, retry_policy=RETRY)
+builder.add_node("employee_data", employee_data, retry_policy=RETRY)
+builder.add_node("documents", documents, retry_policy=RETRY)
+builder.add_node("synthesizer", synthesizer, retry_policy=RETRY)
 builder.add_node("calculator", calculator)
-builder.add_node("verifier", verifier)
+builder.add_node("verifier", verifier, retry_policy=RETRY)
 
 builder.add_edge(START, "router")
 builder.add_conditional_edges("router", pick_branches, ["employee_data", "documents", "synthesizer"])
@@ -47,8 +51,9 @@ builder.add_conditional_edges("verifier", after_verifier, ["synthesizer", END])
 graph = builder.compile()
 
 
-async def run_agent(history: list[dict], conversation_id=None) -> str:
+async def run_agent(history: list[dict], conversation_id=None, on_step=None) -> str:
     begin_run(conversation_id, history)
+    set_progress(on_step)
     try:
         result = await graph.ainvoke({"history": history}, config={"callbacks": [LLMLogger()]})
     except Exception:
